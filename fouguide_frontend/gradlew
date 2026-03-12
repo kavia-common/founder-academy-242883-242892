@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Wrapper shim for CI environments that run `./gradlew` from the project root.
+# Delegates to the Android Gradle wrapper under ./android.
+#
+# Note: This file must be executable (+x) in git for `./gradlew` to work.
+
+exec "$(dirname "$0")/android/gradlew" "$@"

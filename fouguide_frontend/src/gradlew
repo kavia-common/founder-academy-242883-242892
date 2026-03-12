@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Fallback shim for unexpected CI working directories.
+# Delegates to project root wrapper.
+
+exec "$(dirname "$0")/../gradlew" "$@"
