@@ -1,5 +1,6 @@
 import React from "react";
 import { clearSession, getSession, setSession, StoredUser } from "./authStorage";
+import { getMe, login, logout, register } from "../api/fouguideApi";
 
 type AuthStatus = "loading" | "signedOut" | "signedIn";
 
@@ -32,41 +33,86 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     (async () => {
       const session = await getSession();
       if (!mounted) return;
-      setToken(session.token);
-      setUser(session.user);
-      setStatus(session.token ? "signedIn" : "signedOut");
+
+      // If we have a token but no profile (or stale profile), best-effort refresh.
+      if (session.token) {
+        try {
+          const me = await getMe({ token: session.token });
+          const stored: StoredUser = {
+            id: me.id,
+            email: me.email,
+            name: me.display_name,
+          };
+          await setSession({ token: session.token, user: stored });
+          setToken(session.token);
+          setUser(stored);
+          setStatus("signedIn");
+          return;
+        } catch {
+          // Token might be invalid (in-memory backend reset). Clear local session.
+          await clearSession();
+        }
+      }
+
+      setToken(null);
+      setUser(null);
+      setStatus("signedOut");
     })();
+
     return () => {
       mounted = false;
     };
   }, []);
 
   const signIn = React.useCallback(async (params: { email: string; password: string }) => {
-    // Backend auth routes are not yet defined in OpenAPI; provide a deterministic mock session.
-    // Replace this implementation when backend auth endpoints are available.
-    const mockToken = `mock.${Date.now()}`;
-    const mockUser: StoredUser = { id: "u_1", email: params.email, name: "Founder" };
-    await setSession({ token: mockToken, user: mockUser });
-    setToken(mockToken);
-    setUser(mockUser);
+    const res = await login({ email: params.email, password: params.password });
+    const me = await getMe({ token: res.access_token });
+
+    const stored: StoredUser = {
+      id: me.id,
+      email: me.email,
+      name: me.display_name,
+    };
+
+    await setSession({ token: res.access_token, user: stored });
+    setToken(res.access_token);
+    setUser(stored);
     setStatus("signedIn");
   }, []);
 
   const signUp = React.useCallback(async (params: { email: string; password: string; name: string }) => {
-    const mockToken = `mock.${Date.now()}`;
-    const mockUser: StoredUser = { id: "u_1", email: params.email, name: params.name };
-    await setSession({ token: mockToken, user: mockUser });
-    setToken(mockToken);
-    setUser(mockUser);
+    const res = await register({
+      email: params.email,
+      password: params.password,
+      display_name: params.name,
+    });
+    const me = await getMe({ token: res.access_token });
+
+    const stored: StoredUser = {
+      id: me.id,
+      email: me.email,
+      name: me.display_name,
+    };
+
+    await setSession({ token: res.access_token, user: stored });
+    setToken(res.access_token);
+    setUser(stored);
     setStatus("signedIn");
   }, []);
 
   const signOut = React.useCallback(async () => {
+    // Best-effort backend logout; always clear local session.
+    try {
+      await logout({ token });
+    } catch {
+      // ignore
+    }
+
     await clearSession();
     setToken(null);
     setUser(null);
     setStatus("signedOut");
-  }, []);
+  }, [token]);
 
   const value: AuthContextValue = { status, token, user, signIn, signUp, signOut };
 
